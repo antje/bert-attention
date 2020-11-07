@@ -25,6 +25,7 @@ from transformers import RobertaForSequenceClassification
 
 import smdebug.pytorch as smd
 from smdebug.pytorch import Hook, SaveConfig
+from smdebug import modes
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -42,6 +43,17 @@ CLASS_NAMES = ['negative', 'neutral', 'positive']
 LABEL_MAP = {}
 for (i, label) in enumerate(LABEL_VALUES):
     LABEL_MAP[label] = i
+    
+    
+def setDebuggerSaveConfig():  
+    smd.SaveConfig(
+        mode_save_configs={
+            smd.modes.TRAIN: smd.SaveConfigMode(save_interval=1),
+            smd.modes.EVAL: smd.SaveConfigMode(save_interval=1),
+            smd.modes.PREDICT: smd.SaveConfigMode(save_interval=1),
+            smd.modes.GLOBAL: smd.SaveConfigMode(save_interval=1)
+        }
+    )
     
 def parse_args():
 
@@ -295,20 +307,29 @@ def train_model(model,
                 val_data_loader, 
                 df_val,
                 args):
+
+    
+    #create smdebug hook
+    setDebuggerSaveConfig()
+    hook = smd.Hook.create_from_json_file()   
+    hook.register_module(model)
     
     loss_function = nn.CrossEntropyLoss()
+    hook.register_loss(loss_function)
+    
     optimizer = optim.Adam(params=model.parameters(), lr=args.lr)
     
     if args.enable_sagemaker_debugger:
         print('Enable SageMaker Debugger.')
-    
-    train_correct = 0
-    train_total = 0
 
     for epoch in range(args.epochs):
         print('EPOCH -- {}'.format(epoch))
 
+        train_correct = 0
+        train_total = 0
+        
         for i, (sent, label) in enumerate(train_data_loader):
+            hook.set_mode(modes.TRAIN)
             model.train()
             optimizer.zero_grad()
             sent = sent.squeeze(0)
@@ -321,16 +342,26 @@ def train_model(model,
             loss = loss_function(output, label)
             loss.backward()
             optimizer.step()
+            
+            if i%10 == 0:
+                train_total += label.size(0)
+                train_correct += (predicted.cpu() == label.cpu()).sum()
+                accuracy = 100.00 * train_correct.numpy() / train_total
+                print('[epoch: {0} / step: {1}] train_loss: {2:.2f} - train_acc: {3:.2f}%'.format(epoch, i, loss.item(), accuracy))
                         
             if args.run_validation:
-                if i%50 == 0:
+                if i%10 == 0:
+                    hook.set_mode(modes.EVAL)
                     print('RUNNING VALIDATION:')
                     correct = 0
                     total = 0
                     model.eval()
-                    
+                    input_tokens = np.array([])
                     for sent, label in val_data_loader:
                         sent = sent.squeeze(0)
+                        print('sent: {}'.format(sent))
+                        print('sent type: {}'.format(type(sent)))
+                        
                         if torch.cuda.is_available():
                             sent = sent.cuda()
                             label = label.cuda()
@@ -341,7 +372,21 @@ def train_model(model,
                         correct += (predicted.cpu() == label.cpu()).sum()
                 
                     accuracy = 100.00 * correct.numpy() / total
-                    print('[step: {0}] val_loss: {1:.2f} - val_acc: {2:.2f}%'.format(i, loss.item(), accuracy))
+                    print('[epoch: {0} / step: {1}] val_loss: {2:.2f} - val_acc: {3:.2f}%'.format(epoch, i, loss.item(), accuracy))
+                    
+                    if hook.get_collections()['all'].save_config.should_save_step(modes.EVAL, hook.mode_steps[modes.EVAL]):
+                        hook._write_raw_tensor_simple("input_tokens", input_tokens)
 
     print('TRAINING COMPLETED.')
     return model
+
+
+            #record input tokens
+#            input_tokens = np.array([])
+#            for example_id in example_ids.asnumpy().tolist():
+#                array = np.array(dev_dataset[example_id][0].tokens, dtype=np.str)
+#                array = array.reshape(1, array.shape[0])
+#                input_tokens = np.append(input_tokens, array)
+
+#            if hook.get_collections()['all'].save_config.should_save_step(modes.EVAL, hook.mode_steps[modes.EVAL]):  
+#                hook._write_raw_tensor_simple("input_tokens", input_tokens)

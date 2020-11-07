@@ -6,6 +6,7 @@ import os
 import sys
 import pandas as pd
 import random
+import time
 
 import torch
 import torch.distributed as dist
@@ -22,6 +23,7 @@ from transformers import RobertaForSequenceClassification
 
 import smdebug.pytorch as smd
 from smdebug.pytorch import Hook, SaveConfig
+from smdebug import modes
 
 from utils import create_data_loader, train_model, parse_args, save_pytorch_model, save_transformer_model
 
@@ -119,8 +121,9 @@ if __name__ == '__main__':
                                                        0: 1,
                                                        1: 2,
                                                    })
+            config.output_attentions=True
             model = RobertaForSequenceClassification.from_pretrained(PRE_TRAINED_MODEL_NAME, 
-                                                                     config=config, output_attentions=True)
+                                                                     config=config)
             model.to(device)
             successful_download = True
             print('Sucessfully downloaded after {} retries.'.format(retries))
@@ -152,10 +155,6 @@ if __name__ == '__main__':
     print('model_dir: {}'.format(args.model_dir))
     
     print('model summary: {}'.format(model))
-    
-    callbacks = []
-    initial_epoch_number = 0
-
         
     ###### START TRAINING
 
