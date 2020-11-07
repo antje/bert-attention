@@ -235,13 +235,8 @@ class ReviewDataset(Dataset):
               print('input_id: {}'.format(input_id))
         print('**************** END ************************')
         
-        # TODO: RETURN TOKENS SIMILAR TO NATHALIE'S EXAMPLE
-        result = tokens # dict(tokens_to_input_ids)
-        print('result: {}'.format(result))
-        print('type result: {}'.format(type(result)))
-              
-        return encoding['input_ids'].flatten(), torch.tensor(target, dtype=torch.long), result
-
+        # TODO: CHECK IF TOKENS IS GOOD ENOUGH SIMILAR TO NATHALIE'S EXAMPLE   
+        return encoding['input_ids'].flatten(), torch.tensor(target, dtype=torch.long), tokens
 
     
 def create_list_input_files(path):
