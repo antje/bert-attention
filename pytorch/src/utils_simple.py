@@ -23,6 +23,10 @@ from transformers import RobertaModel, RobertaTokenizer, RobertaConfig
 from transformers import AdamW, get_linear_schedule_with_warmup
 from transformers import RobertaForSequenceClassification
 
+import smdebug.pytorch as smd
+from smdebug.pytorch import Hook, SaveConfig
+from smdebug import modes
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -207,8 +211,37 @@ class ReviewDataset(Dataset):
           return_tensors='pt',
           truncation=True
         )
+        
+        tokens = self.tokenizer.tokenize(review)[0:self.max_seq_len] #, truncation=True, max_length=self.max_seq_len)
+        tokens += [''] * (self.max_seq_len - len(tokens))
 
-        return encoding['input_ids'].flatten(), torch.tensor(target, dtype=torch.long)
+        # print('type(tokens): {}'.format(type(tokens)))        
+        # print('type(encoding.input_ids): {}'.format(type(encoding['input_ids'].flatten())))
+        # print('encoding.input_ids: {}'.format(encoding['input_ids'].flatten()))
+        print('************** START **************************')
+        print('tokens: {}'.format(tokens))
+        print('encoding.input_ids: {}'.format(encoding['input_ids'].flatten()))
+        print('encoding.input_ids.flatten().tolist()[1:]: {}'.format(encoding['input_ids'].flatten().tolist()[1:]))
+
+        print('list len encoding.input_ids.flatten(): {}'.format(len(encoding['input_ids'].flatten())))
+        print('list len encoding.input_ids.flatten().tolist()[1:]: {}'.format(len(encoding['input_ids'].flatten().tolist()[1:])))
+        print('list len tokens: {}'.format(len(tokens)))
+        print('encoding.input_ids.flatten().tolist()[1:]: {}'.format(encoding['input_ids'].flatten().tolist()[1:]))
+        
+        tokens_to_input_ids = zip(tokens, encoding['input_ids'].flatten().tolist()[1:])
+        print('tokens_to_input_ids: {}'.format(tokens_to_input_ids))
+        for token, input_id in zip(tokens, encoding['input_ids'].flatten().tolist()[1:]):
+              print('token: {}'.format(token))
+              print('input_id: {}'.format(input_id))
+        print('**************** END ************************')
+        
+        # TODO: RETURN TOKENS SIMILAR TO NATHALIE'S EXAMPLE
+        result = tokens # dict(tokens_to_input_ids)
+        print('result: {}'.format(result))
+        print('type result: {}'.format(type(result)))
+              
+        return encoding['input_ids'].flatten(), torch.tensor(target, dtype=torch.long), result
+
 
     
 def create_list_input_files(path):
@@ -295,6 +328,8 @@ def train_model(model,
                 df_val,
                 args):
     
+    hook = smd.Hook.create_from_json_file()   
+    
     loss_function = nn.CrossEntropyLoss()    
     optimizer = optim.Adam(params=model.parameters(), lr=args.lr)
     
@@ -307,10 +342,13 @@ def train_model(model,
         train_correct = 0
         train_total = 0
         
-        for i, (sent, label) in enumerate(train_data_loader):
+        for i, (sent, label, tokens) in enumerate(train_data_loader):
+            hook.set_mode(modes.TRAIN)
             model.train()
             optimizer.zero_grad()
             sent = sent.squeeze(0)
+            print('tokens: {}'.format(tokens))
+            
             if torch.cuda.is_available():
                 sent = sent.cuda()
                 label = label.cuda()
@@ -321,9 +359,6 @@ def train_model(model,
             loss.backward()
             optimizer.step()
             
-            input_tensor_array = sent.cpu().detach().numpy()
-            tokenizer.
-            
             if i%10 == 0:
                 train_total += label.size(0)
                 train_correct += (predicted.cpu() == label.cpu()).sum()
@@ -331,16 +366,15 @@ def train_model(model,
                 print('[epoch: {0} / step: {1}] train_loss: {2:.2f} - train_acc: {3:.2f}%'.format(epoch, i, loss.item(), accuracy))
                         
             if args.run_validation:
+                hook.set_mode(modes.EVAL)
+
                 if i%10 == 0:
                     print('RUNNING VALIDATION:')
                     correct = 0
                     total = 0
                     model.eval()
-                    for sent, label in val_data_loader:
+                    for sent, label, tokens in val_data_loader:
                         sent = sent.squeeze(0)
-                        print('sent: {}'.format(sent))
-                        print('sent type: {}'.format(type(sent)))
-                        
                         if torch.cuda.is_available():
                             sent = sent.cuda()
                             label = label.cuda()
@@ -349,6 +383,8 @@ def train_model(model,
                         
                         total += label.size(0)
                         correct += (predicted.cpu() == label.cpu()).sum()
+                        
+                        print('tokens: {}'.format(tokens))
                 
                     accuracy = 100.00 * correct.numpy() / total
                     print('[epoch: {0} / step: {1}] val_loss: {2:.2f} - val_acc: {3:.2f}%'.format(epoch, i, loss.item(), accuracy))
