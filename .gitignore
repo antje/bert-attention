@@ -1,3 +1,7 @@
 .ipynb_checkpoints/
 tmp/
 __pycache__
+pytorch/model
+pytorch/output
+setup.sh
+pytorch/04_New_Visualize_BERT_Attention.ipynb

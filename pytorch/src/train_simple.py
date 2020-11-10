@@ -55,16 +55,7 @@ if __name__ == '__main__':
     
     print('SM_TRAINING_ENV {}'.format(env_var['SM_TRAINING_ENV']))
     sm_training_env_json = json.loads(env_var['SM_TRAINING_ENV'])
-
-    ###### Check if Training Master
-    is_master = sm_training_env_json['is_master']
-    print('is_master {}'.format(is_master))
     
-    if is_master:
-        checkpoint_path = args.checkpoint_base_path
-    else:
-        checkpoint_path = '/tmp/checkpoints'        
-    print('checkpoint_path {}'.format(checkpoint_path))
     
     ###### Check if distributed training
     is_distributed = len(args.hosts) > 1 and args.backend is not None
@@ -92,7 +83,6 @@ if __name__ == '__main__':
     if use_cuda:
         torch.cuda.manual_seed(args.seed) 
 
-    
     ###### INSTANTIATE MODEL
     tokenizer = None
     config = None

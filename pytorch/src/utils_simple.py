@@ -121,14 +121,6 @@ def parse_args():
                         type=eval, 
                         default=False)
     
-    parser.add_argument('--enable_checkpointing', 
-                        type=eval, 
-                        default=False) 
-    
-    parser.add_argument('--checkpoint_base_path', 
-                        type=str, 
-                        default='/opt/ml/checkpoints')
-    
     parser.add_argument('--train_steps_per_epoch',
                         type=int,
                         default=None)
@@ -278,7 +270,6 @@ def create_data_loader(path, tokenizer, max_seq_len, batch_size):
         batch_size=batch_size,
         shuffle=True
     ), df
-
 
 
 # TODO: need to put saved config.json in code/ folder
